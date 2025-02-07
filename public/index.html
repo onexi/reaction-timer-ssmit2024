@@ -3,86 +3,153 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Messenger App (async/await)</title>
+    <meta name="viewport" content="width=400">
+    <title>Timer Game (async/await)</title>
     <style>
-      /* Basic styling for the messenger app */
+      /* Basic styling for the timer app */
       body {
         font-family: Arial, sans-serif;
         background-color: #f2f2f2;
         margin: 0;
         padding: 0;
       }
-      #chat {
-        width: 500px;
+      #game {
+        width: 300px;
         margin: 50px auto;
         background-color: #fff;
         border: 1px solid #ccc;
         padding: 20px;
         box-shadow: 0 0 10px rgba(0,0,0,0.1);
       }
-      #messages {
-        list-style-type: none;
-        padding: 0;
-        max-height: 300px;
-        overflow-y: auto;
-        margin-bottom: 20px;
-      }
-      #messages li {
-        padding: 8px 10px;
-        border-bottom: 1px solid #eee;
-      }
       .input-container {
         display: flex;
         gap: 10px;
         margin-bottom: 10px;
       }
-      .input-container input[type="text"] {
-        flex: 1;
-        padding: 10px;
-        border: 1px solid #ccc;
-        border-radius: 3px;
+      .output-container {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 10px;
       }
-      #sendBtn {
-        padding: 10px 20px;
+      #startBtn {
+        margin-left: auto;
+        margin-right: auto;
+        width: 80%;
+        height: 60px;
+        font-size: large;
         border: none;
-        background-color: #007bff;
+        background-color: #67ad5b;
         color: #fff;
         border-radius: 3px;
         cursor: pointer;
       }
-      #sendBtn:hover {
-        background-color: #0056b3;
+      #startBtn:hover {
+        background-color: #377d2b;
       }
-    </style>
+      #stopBtn {
+        margin-left: auto;
+        margin-right: auto;
+        width: 80%;
+        height: 60px;
+        font-size: large;
+        border: none;        
+        background-color: #555555;
+        color: #fff;
+        border-radius: 3px;
+        cursor: pointer;
+      }
+  </style>
   </head>
   <body>
-    <div id="chat">
-      <ul id="messages"></ul>
-      <!-- Input fields (without using a <form> element) -->
+    <div id="game">
+      <!--ul id="messages"></ul-->
       <div class="input-container">
-        <input id="username" type="text" placeholder="Your name" required />
+        <button id="startBtn" type="button">Start</button>
       </div>
       <div class="input-container">
-        <input
-          id="message"
-          type="text"
-          placeholder="Type your message"
-          required
-          autocomplete="off"
-        />
-        <button id="sendBtn" type="button">Send</button>
+        <button id="stopBtn" type="button">Press above button to start</button>
       </div>
+      <table border="1" align="center">
+        <tr>
+          <td>Fastest Reaction Recorded (ms)</td>
+          <td id="bestresult" width="120"></td>
+        </tr>
+        <tr>
+          <td>Your Last Reaction Time (ms)</td>
+          <td id="yourresult"></td>
+        </tr>
+      </table>
     </div>
 
     <script>
-      // DOM element references
-      const usernameInput = document.getElementById("username");
-      const messageInput = document.getElementById("message");
-      const sendBtn = document.getElementById("sendBtn");
-      const messagesList = document.getElementById("messages");
+      const startBtn = document.getElementById("startBtn");
+      const stopBtn = document.getElementById("stopBtn");
+      const bestresult = document.getElementById("bestresult");
+      const yourresult = document.getElementById("yourresult");
+      stopBtn.disabled = true;
+
+      startBtn.addEventListener("click", async () => {
+        startBtn.disabled = true;
+        startBtn.style.backgroundColor = "#555555";
+        stopBtn.textContent = "Wait...";
+        stopBtn.disabled = false;
+        try {
+          const response = await fetch("/messages", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({"command": "start"}),
+          });
+          if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+          }
+
+          const json = await response.json();
+          if(json["command"] === "activate"){ //should be true
+            stopBtn.style.backgroundColor = "#ad675b";
+            stopBtn.textContent = "Press Now!";
+          }
+        } catch (error) {
+          console.error("Error starting the server:", error);
+        }
+      });
+
+      stopBtn.addEventListener("click", async () => {
+          try {
+            const response = await fetch("/messages", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({"command": "stop"}),
+            });
+            if (!response.ok) {
+              throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+
+            const json = await response.json();
+            if(json["result"] === "No Contest"){
+              yourresult.textContent = "No Contest";
+            } else {
+              const lastresult = json["result"];
+              yourresult.textContent = lastresult;
+              if(bestresult.textContent==="" || parseFloat(bestresult.textContent) > lastresult){
+                bestresult.textContent = lastresult;
+              }              
+            }
+            startBtn.disabled = false;
+            startBtn.style.backgroundColor = "#67ad5b";
+            stopBtn.disabled = true;
+            stopBtn.style.backgroundColor = "#555555";
+            stopBtn.textContent = "Press above button to start";
+          } catch (error) {
+            console.error("Error starting the server:", error);
+          }
+      });
 
       /**
-       * Asynchronously fetches all messages from the server and updates the messages list.
+       * Asynchronously fetches the best record from the server and updates the table.
        */
       async function fetchMessages() {
         try {
@@ -91,59 +158,13 @@
             throw new Error(`HTTP error! Status: ${response.status}`);
           }
           const data = await response.json();
-          // Clear and update the messages list
-          messagesList.innerHTML = "";
-          data.messages.forEach((msg) => {
-            const li = document.createElement("li");
-            li.textContent = `${msg.username}: ${msg.message}`;
-            messagesList.appendChild(li);
-          });
-          // Scroll to the bottom of the list
-          messagesList.scrollTop = messagesList.scrollHeight;
+          if(data["besttime"]>0){
+            bestresult.textContent = data["besttime"];
+          }
         } catch (error) {
           console.error("Error fetching messages:", error);
         }
       }
-
-      /**
-       * Asynchronously sends a new message to the server.
-       */
-      async function sendMessage() {
-        const username = usernameInput.value.trim();
-        const message = messageInput.value.trim();
-
-        // Do not send if username or message is empty.
-        if (!username || !message) {
-          return;
-        }
-
-        try {
-          const response = await fetch("/messages", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ username, message }),
-          });
-          if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.status}`);
-          }
-          // Clear the message input after a successful send
-          messageInput.value = "";
-        } catch (error) {
-          console.error("Error sending message:", error);
-        }
-      }
-
-      // Listen for a click event on the Send button.
-      sendBtn.addEventListener("click", sendMessage);
-
-      // Also allow sending a message by pressing the Enter key in the message input.
-      messageInput.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-          sendMessage();
-        }
-      });
 
       // Poll for new messages every 2 seconds
       setInterval(fetchMessages, 2000);
