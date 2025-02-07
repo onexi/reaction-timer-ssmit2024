@@ -9,34 +9,51 @@ app.use(express.json());
 app.use(express.static('public'));
 
 // In-memory storage for messages
-let messages = [];
+let timeoutid = -1;
+let start_time = -1;
+let best_time = -1;
+
+const min_wait = 1.0;
+const max_wait = 20.0;
 
 /**
  * GET /messages
- * Returns a JSON object containing all messages.
+ * Returns the best recorded time so far.
  */
 app.get('/messages', (req, res) => {
-  res.json({ messages });
+  res.json({"besttime": best_time});
 });
 
 /**
  * POST /messages
- * Expects a JSON payload with "username" and "message".
- * Adds the new message to the messages array.
+ * Expects a JSON payload with key="command".
+ * when command=start(Start button pressed), start the counting procedure after a random time.
+ * when command=stop(Stop button pressed), record/return the time or cancel recording if the player pressed too early.
  */
 app.post('/messages', (req, res) => {
-  const { username, message } = req.body;
-  if (!username || !message) {
-    return res.status(400).json({ error: 'Both username and message are required.' });
+  if (req.body["command"] === "start") {
+    canceled = false;
+    const wait_time = 1000.0*min_wait + Math.random()*1000.0*(max_wait-min_wait);
+    timeoutid = setTimeout(()=>{
+      res.send(JSON.stringify({"command": "activate"}));
+      start_time = Date.now();  
+    }, wait_time);
+  } else if (req.body["command"] === "stop") {
+    if(start_time<0){
+      clearTimeout(timeoutid);
+      res.send(JSON.stringify({"result": "No Contest"}));  
+    } else {
+      let score = Date.now() - start_time;
+      res.send(JSON.stringify({"result": score}));
+      if(best_time<0 || best_time>score){
+        best_time = score;
+        console.log("new record!:"+best_time);
+      }
+      start_time = -1;
+    }
+  } else {
+    console.log(req.body)
   }
-  // Optionally, include a timestamp for each message.
-  const newMessage = {
-    username,
-    message,
-    timestamp: Date.now()
-  };
-  messages.push(newMessage);
-  res.status(201).json({ success: true });
 });
 
 // Define the port (default to 3000 if not specified).
